@@ -175,54 +175,70 @@ if len(num_cols) >= 2:
 st.markdown("---")
 st.header("🤖 Step: Model training (B5) - Linear Regression")
 
-# Model training UI
-st.write("Chọn biến (features) và target để huấn luyện linear regression.")
-features = st.multiselect("Chọn features (X)", options=num_cols, default=[c for c in ['discounted_price','actual_price','discount_percentage','rating_count'] if c in num_cols])
-target = st.selectbox("Chọn target (y)", options=num_cols, index=0 if 'rating' in num_cols else 0)
+# UI chọn features và target
+features = st.multiselect(
+    "Chọn features (X)",
+    options=num_cols,
+    default=[c for c in ['discounted_price','actual_price','discount_percentage','rating_count'] if c in num_cols]
+)
+target = st.selectbox(
+    "Chọn target (y)",
+    options=[c for c in num_cols if c not in features],
+    index=0 if 'rating' in num_cols else 0
+)
 
 if st.button("Train model"):
-    if not features:
-        st.error("Chọn ít nhất 1 feature.")
-    else:
+    try:
+        # --- Kiểm tra điều kiện ---
+        if not features:
+            st.error("❌ Bạn cần chọn ít nhất 1 feature.")
+            st.stop()
+        if target in features:
+            st.error("❌ Target không được trùng với features.")
+            st.stop()
+
+        # --- Chuẩn bị dữ liệu ---
         X = df[features].copy()
         y = df[target].copy()
-        # Drop rows with NaN in X or y
-        before = X.shape[0]
-        df_model = pd.concat([X,y], axis=1).dropna()
+
+        df_model = pd.concat([X, y], axis=1).dropna()
+        if df_model.shape[0] < 5:
+            st.error("❌ Dữ liệu sau khi loại NaN quá ít, không đủ để train/test.")
+            st.stop()
+
         X = df_model[features]
         y = df_model[target]
-        after = X.shape[0]
-        st.write(f"Dropping rows with NaN: {before-after} rows removed.")
 
-        # Split
-        test_pct = test_size/100.0
-        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_pct, random_state=int(random_state))
-        st.write(f"Train size: {X_train.shape[0]}, Test size: {X_test.shape[0]}")
+        # --- Chia tập ---
+        test_pct = test_size / 100.0
+        X_train, X_test, y_train, y_test = train_test_split(
+            X, y, test_size=test_pct, random_state=int(random_state)
+        )
 
-        # Standardize features
+        # --- Chuẩn hóa dữ liệu ---
         scaler = StandardScaler()
         X_train_scaled = scaler.fit_transform(X_train)
         X_test_scaled = scaler.transform(X_test)
 
-        # Fit model
+        # --- Huấn luyện mô hình ---
         model = LinearRegression()
         model.fit(X_train_scaled, y_train)
 
-        # Predict
+        # --- Dự đoán ---
         y_pred = model.predict(X_test_scaled)
 
-        # Metrics
+        # --- Đánh giá ---
         mse = mean_squared_error(y_test, y_pred)
         rmse = np.sqrt(mse)
         r2 = r2_score(y_test, y_pred)
 
         st.markdown("### 🔍 Evaluation")
-        st.write(f"📉 **Mean Squared Error (MSE):** `{mse:.4f}`")
-        st.write(f"📊 **Root Mean Squared Error (RMSE):** `{rmse:.4f}`")
-        st.write(f"📈 **R-squared Score (R²):** `{r2:.4f}`")
+        st.write(f"📉 Mean Squared Error (MSE): `{mse:.4f}`")
+        st.write(f"📊 Root Mean Squared Error (RMSE): `{rmse:.4f}`")
+        st.write(f"📈 R-squared Score (R²): `{r2:.4f}`")
 
-        # Comparison plot
-        fig, ax = plt.subplots(figsize=(6,4))
+        # --- Vẽ biểu đồ so sánh ---
+        fig, ax = plt.subplots(figsize=(6, 4))
         sns.scatterplot(x=y_test, y=y_pred, ax=ax, alpha=0.7)
         ax.plot([y_test.min(), y_test.max()], [y_test.min(), y_test.max()], 'r--')
         ax.set_xlabel("Actual")
@@ -230,7 +246,7 @@ if st.button("Train model"):
         ax.set_title("Actual vs Predicted")
         st.pyplot(fig)
 
-        # Coefficients
+        # --- Trọng số features ---
         coef_df = pd.DataFrame({
             "feature": features,
             "coefficient": model.coef_
@@ -238,11 +254,5 @@ if st.button("Train model"):
         st.subheader("📌 Feature coefficients")
         st.table(coef_df)
 
-        # Optionally download predictions
-        out_df = X_test.copy()
-        out_df['actual'] = y_test
-        out_df['predicted'] = y_pred
-        st.download_button("Download predictions (CSV)", out_df.to_csv(index=False), file_name="predictions.csv", mime="text/csv")
-
-st.markdown("---")
-st.caption("Ứng dụng demo: phù hợp cho dataset dạng review/product. Bạn có thể điều chỉnh features/target tuỳ dataset.")
+    except Exception as e:
+        st.error(f"❌ Lỗi khi huấn luyện mô hình: {str(e)}")
